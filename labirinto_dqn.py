@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-import class_maze as cm
+import maze_information_map.ackermann_env as cm
 
 
 SEED = 42

@@ -14,8 +14,8 @@ import pygame
 from pyparsing import col
 
 # Globais
-NACTIONS = 9
-MAX_STEPS = 100
+NACTIONS = 5
+MAX_STEPS = 500
 SCREEN_SIZE = 500
 
 ########################################
@@ -24,14 +24,48 @@ SCREEN_SIZE = 500
 class Maze(gym.Env):
     ########################################
     # construtor
-    def __init__(self, xlim=np.array([0.0, 10.0]), ylim=np.array([0.0, 10.0]), res=0.4, img='labirinto2.png', alvo=np.array([5.0, 1.8]), render=False, continuous_obs=False, window_layers=5, reset_known_map_each_episode=False):
-
+    
+    def __init__(
+            self,
+            xlim=np.array([0.0,10.0]),
+            ylim=np.array([0.0,10.0]),
+            res=0.4,
+            img='labirinto2.png',
+            alvo=np.array([5.0, 1.8]),
+            render=False,
+            continuous_obs=False,
+            window_layers=5,
+            reset_known_map_each_episode=False,
+            wheelbase=0.4,
+            robot_length=0.545,
+            robot_width=0.415,
+            max_steering_deg=20.0,
+            speed=0.5,
+            dt=0.2
+    ):
         # salva o tamanho geometrico da imagem em metros
         self.xlim = xlim
         self.ylim = ylim
 
         # resolucao
         self.res = res
+
+        #parâmetros fisicos do veículo
+        self.wheelbase = wheelbase
+        self.robot_length = robot_length
+        self.robot_width = robot_width
+        self.max_steering_deg = max_steering_deg
+        self.speed = speed
+        self.dt = dt
+
+        #descricao das acoes discretas de esterçamento
+        self.steering_actions_deg = np.array([
+            -self.max_steering_deg,
+            -self.max_steering_deg/2,
+            0,
+            self.max_steering_deg/2,
+            self.max_steering_deg
+        ], dtype=np.float32)
 
         # modo de observacao:
         # False -> estado discreto para Q-learning/SARSA tabular
@@ -49,12 +83,12 @@ class Maze(gym.Env):
         self.num_states = [ns, ns]
         
         # espaco de atuacao
-        self.action_space = spaces.Discrete(NACTIONS)
+        self.action_space = spaces.Discrete(len(self.steering_actions_deg))
 
         # espaco de observacao para DQN
-        # janela local + 7 variaveis continuas:
+        # janela local + 9 variaveis continuas:
         # x_norm, y_norm, dx_goal, dy_goal, dist_goal, steps_norm, info_norm
-        obs_dim = (2 * self.window_layers + 1) ** 2 + 7
+        obs_dim = (2 * self.window_layers + 1) ** 2 + 9
 
         self.observation_space = spaces.Box(
             low=-1.0,
@@ -79,7 +113,13 @@ class Maze(gym.Env):
         pygame.display.set_mode((1, 1))  # Inicializa com uma janelinha mínima
         self.init2D(img)
         pygame.quit()
-        
+
+        #cria pontos internos no retangulo do robo para detectar colisao    
+        self.build_footprint_samples(spacing=0.04)
+
+        #inicia mapa informacao
+        self.known_map = -np.ones_like(self.mapa, dtype=np.int8)
+
         # Inicializa pygame se necessário
         if self.render_env:
             pygame.init()
@@ -121,7 +161,30 @@ class Maze(gym.Env):
         # Parâmetros de conversão (como no original)
         self.mx = float(self.ncol) / float(self.xlim[1] - self.xlim[0])
         self.my = float(self.nrow) / float(self.ylim[1] - self.ylim[0])
-        
+
+    def build_footprint_samples(self, spacing=0.04):
+        xs = np.arange(
+            -self.robot_length/2,
+            self.robot_length/2 + spacing,
+            spacing
+        )
+
+        ys = np.arange(
+            -self.robot_width/2,
+            self.robot_width/2 + spacing,
+            spacing
+        )
+
+        xx, yy = np.meshgrid(xs, ys)
+
+        self.footprint_local = np.column_stack([
+            xx.ravel(),
+            yy.ravel()
+        ])
+
+    def wrap_angle(self, theta):
+        return (theta + np.pi) % (2 * np.pi) - np.pi
+    
     ########################################
     # seed
     ########################################
@@ -136,9 +199,14 @@ class Maze(gym.Env):
 
         self.steps = 0
 
-        self.p = self.getRand()
+        self.pose = self.getRand()
 
-        self.traj = [self.p]
+        self.p = self.pose[:2].copy()
+
+        self.traj = [self.p.copy()]
+
+        self.last_collision = False
+        self.last_steering_deg = 0
 
         if self.reset_known_map_each_episode:
             self.known_map = -np.ones_like(self.mapa, dtype=np.int8)
@@ -152,64 +220,64 @@ class Maze(gym.Env):
 
         return self.get_state(self.p)
 
-    ########################################
-    # converte acão para direção
-    def actionU(self, action):
-
+    def action_to_steering(self, action):
         action = int(action)
 
-        # action 0 faz ficar parado
-        if action == 0:
-            r = 0.0
-        else:
-            r = self.res
+        return float(self.steering_actions_de[action])
 
-        action -= 1
-        th = np.linspace(0.0, 2.0 * np.pi, NACTIONS)[:-1]
+    def ackermann_step(self, steering_deg):
+        x, y, theta = self.pose
 
-        return r * np.array([np.cos(th[action]), np.sin(th[action])])
-        
-    ########################################
+        delta = np.deg2rad(steering_deg)
+
+        lr = self.wheelbase / 2.0
+
+        beta = np.arctan(lr/ self.wheelbase * np.tan(delta))
+
+        x_new = x + self.speed * np.cos(theta + beta) * self.dt
+        y_new = y + self.speed * np.sin(theta + beta) * self.dt
+        theta_new = (theta + (self.speed/lr) * np.sin(beta) * self.dt)
+        theta_new = self.wrap_angle(theta_new)
+        return x_new, y_new, theta_new
+
     # step -> new_observation, reward, done, info = env.step(action)
     def step(self, action):
 
         action = int(action)
 
-        # novo passo
         self.steps += 1
 
-        # seleciona acao
-        u = self.actionU(action)
+        steering_deg = self.action_to_steering(action)
 
-        # proximo estado
-        nextp = self.p + u
+        self.last_steering_deg = steering_deg
 
-        # verifica limites do ambiente
-        if ((self.xlim[0] <= nextp[0] <= self.xlim[1]) and
-            (self.ylim[0] <= nextp[1] <= self.ylim[1])):
-            self.p = nextp
+        next_pose = self.ackermann_step(steering_deg)
 
-        # trajetoria
-        self.traj.append(self.p)
+        collided = self.collision(next_pose)
+        self.last_collision = collided
 
-        # atualiza mapa conhecido
+        if not collided:
+            self.pose = next_pose
+            self.p = self.pose[:2].copy()
+
+        self.traj.append(self.p.copy())
+
         self.update_known_map(layers=2)
 
-        # reward
         reward = self.getReward(action)
 
-        # estado terminal?
         done = self.terminal()
 
-        # DQN: retorna vetor continuo
         if self.continuous_obs:
             obs = self.get_observation()
-
-        # Q-learning/SARSA: retorna estado discreto
         else:
             obs = self.get_state(self.p)
 
-        return obs, reward, done, {}
+        info = {"collision": collided,
+                "steering_deg": steering_deg,
+                "theta": float(self.pose[2])}
+
+        return obs, reward, done, info
 
     ########################################
     # função de reforço
@@ -260,17 +328,19 @@ class Maze(gym.Env):
     ########################################
     # pega ponto aleatorio 
     def getRand(self):
-        # pega um ponto aleatorio
         while True:
             qx = np.random.uniform(self.xlim[0], self.xlim[1])
+
             qy = np.random.uniform(self.ylim[0], self.ylim[1])
-            q = (qx, qy)
-            # verifica colisao
-            if not self.collision(q):
+
+            theta = np.random.uniform(-np.pi, np.pi)
+
+            pose = np.array([qx, qy, theta], dtype=np.float32)
+
+            if not self.collision(pose):
                 break
 
-        # retorna
-        return q
+        return pose
 
     ########################################
     # verifica colisao com os obstaculos

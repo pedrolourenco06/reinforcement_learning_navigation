@@ -1,5 +1,5 @@
 import numpy as np
-import class_maze as cm
+import maze_information_map.ackermann_env as cm
 
 env = cm.Maze(
     render=False,

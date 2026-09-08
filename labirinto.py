@@ -24,7 +24,7 @@
 # - Se o robô colidir com algum obstáculo, recebe -50
 
 # %%
-import class_maze as cm
+import maze_information_map.ackermann_env as cm
 import numpy as np
 from functools import partial
 import os
