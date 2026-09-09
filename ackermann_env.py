@@ -21,14 +21,14 @@ SCREEN_SIZE = 500
 ########################################
 # classe do mapa
 ########################################
-class Maze(gym.Env):
+class AckermannEnv(gym.Env):
     ########################################
     # construtor
     
     def __init__(
             self,
-            xlim=np.array([0.0,10.0]),
-            ylim=np.array([0.0,10.0]),
+            xlim=np.array([0.0,19.2]),
+            ylim=np.array([0.0,24.0]),
             res=0.4,
             img='labirinto2.png',
             alvo=np.array([5.0, 1.8]),
@@ -567,7 +567,7 @@ class Maze(gym.Env):
 
         corners = np.array([
             [half_l, half_w],
-            [half_l, -half_w]
+            [half_l, -half_w],
             [-half_l, -half_w],
             [-half_l, half_w]
         ])
