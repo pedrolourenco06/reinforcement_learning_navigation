@@ -241,7 +241,13 @@ if __name__ == "__main__":
         render=render,
         continuous_obs=True,
         window_layers=5,
-        reset_known_map_each_episode=True
+        reset_known_map_each_episode=True,
+        wheelbase = 0.4,
+        robot_length = 0.545,
+        robot_width = 0.415,
+        max_steering_deg = 20,
+        speed = 0.5,
+        dt = 0.2
     )
 
     obs_dim = env.observation_space.shape[0]
@@ -297,6 +303,7 @@ if __name__ == "__main__":
 
             
             if episode % render_every == 0:
+                env.render()
                 env.render_known_map()
 
             if done:

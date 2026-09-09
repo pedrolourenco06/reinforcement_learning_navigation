@@ -223,7 +223,7 @@ class Maze(gym.Env):
     def action_to_steering(self, action):
         action = int(action)
 
-        return float(self.steering_actions_de[action])
+        return float(self.steering_actions_deg[action])
 
     def ackermann_step(self, steering_deg):
         x, y, theta = self.pose
@@ -238,7 +238,7 @@ class Maze(gym.Env):
         y_new = y + self.speed * np.sin(theta + beta) * self.dt
         theta_new = (theta + (self.speed/lr) * np.sin(beta) * self.dt)
         theta_new = self.wrap_angle(theta_new)
-        return x_new, y_new, theta_new
+        return np.array([x_new, y_new, theta_new], dtype=np.float32)
 
     # step -> new_observation, reward, done, info = env.step(action)
     def step(self, action):
@@ -283,88 +283,121 @@ class Maze(gym.Env):
     # função de reforço
     def getReward(self, action):
         
-        # reward
-        reward = 0.0
-        
-        # colisao
-        if self.collision(self.p):
-            reward -= MAX_STEPS/2.0
-            
-        # chegou no alvo
-        if np.linalg.norm(self.p - self.alvo) <= self.res:
-            reward += MAX_STEPS
+        reward = -0.1
 
-        # timeout    
-        if self.steps > MAX_STEPS:
-            reward -= MAX_STEPS/5.0
+        #parcela para descobrimento de novas areas
+        if self.info_gain > 0:
+            reward += 0.002 * self.info_gain
 
-        if len(self.traj) > 5 and np.linalg.norm(np.array(self.traj[-1]) - np.array(self.traj[-5])) < self.res:
-            reward -= 2.0
+        #penalidasde por colidir
+        if self.last_collision:
+            reward -= 50
 
-        # recompensa por explorar
-        reward += 2.0 * (self.info_gain/10000)
+        #alcançou obj
+        if self.reached_goal():
+            reward += 100
 
-        if action == 0:
-            reward -= 1.0
-            
+        #timeout
+        if self.steps >= MAX_STEPS:
+            reward -= 20
+
         return reward
     
     ########################################
     # terminou?
     def terminal(self):
-        # colisao
-        if self.collision(self.p):
+        if self.last_collision:
             return True
-        # chegou no alvo
-        if np.linalg.norm(self.p - self.alvo) <= self.res:
+        if self.reached_goal():
             return True
-        if self.steps > MAX_STEPS:
+        if self.steps >= MAX_STEPS:
             return True
-        return False
     
     def reached_goal(self):
-        return np.linalg.norm(self.p - self.alvo) <= self.res
+        return np.linalg.norm(self.p - self.alvo) <= 0.30
 
     ########################################
     # pega ponto aleatorio 
     def getRand(self):
         while True:
-            qx = np.random.uniform(self.xlim[0], self.xlim[1])
+            qx = np.random.uniform(
+                self.xlim[0],
+                self.xlim[1]
+            )
 
-            qy = np.random.uniform(self.ylim[0], self.ylim[1])
+            qy = np.random.uniform(
+                self.ylim[0],
+                self.ylim[1]
+            )
 
-            theta = np.random.uniform(-np.pi, np.pi)
+            theta = np.random.uniform(
+                -np.pi,
+                np.pi
+            )
 
-            pose = np.array([qx, qy, theta], dtype=np.float32)
+            pose = np.array([
+                qx,
+                qy,
+                theta
+            ], dtype=np.float32)
 
             if not self.collision(pose):
                 break
 
         return pose
-
     ########################################
     # verifica colisao com os obstaculos
     def collision(self, q):
 
-        # posicao de colisao na imagem
-        px, py = self.mts2px(q)
-        col = int(px)
-        lin = int(py)
+        q = np.asarray(q, dtype=np.float32)
 
-        # verifica se esta dentro do ambiente
-        if (lin <= 0) or (lin >= self.nrow):
+        if q.size == 2:
+            pose = np.array([q[0], q[1], 0.0])
+        else:
+            pose = q
+
+        x, y, theta = pose
+
+        c = np.cos(theta)
+        s = np.sin(theta)
+
+        #pontos do robo no referencial local
+        lx = self.footprint_local[:, 0]
+        ly = self.footprint_local[:, 1]
+
+        #rotaciona e translada para o mundo
+        wx = x + c * lx - s * ly
+        wy = y + s * lx + c * ly
+
+        #verifica os limites do ambiente
+        if np.any(wx <= self.xlim[0]):
             return True
-        if (col <= 0) or (col >= self.ncol):
+        if np.any(wx >= self.xlim[1]):
+            return True
+        if np.any(wy <= self.ylim[0]):
+            return True
+        if np.any(wy >= self.xlim[1]):
             return True
 
-        # colisao
-        try:
-            if self.mapa.item(lin, col) < 127:
+        #verifica cada ponto q compoe o robo
+        for px_world, py_world in zip(wx, wy):
+            px, py = self.mts2px([px_world, py_world])
+
+            col = int(px)
+            lin = int(py)
+
+            if(lin < 0 or lin >= self.nrow or col < 0 or col >= self.ncol):
                 return True
-        except IndexError:
-            None
+
+            if self.mapa[lin, col] < 127:
+                return True
 
         return False
+            
+        
+
+       
+
 
     ########################################
     # transforma pontos no mundo real para pixels na imagem
@@ -472,44 +505,34 @@ class Maze(gym.Env):
 
         obs = []
 
+        x = self.pose[0]
+        y = self.pose[1]
+        theta = self.pose[2]
+
         for dy in range(self.window_layers, -self.window_layers - 1, -1):
             for dx in range(-self.window_layers, self.window_layers + 1):
-
-                q = np.array([
-                    self.p[0] + dx * self.res,
-                    self.p[1] + dy * self.res
-                ])
-
+                q = np.array([x + dx * self.res, y + dy * self.res])
                 obs.append(self.get_known_value_at_world(q))
 
-        x_norm = 2.0 * (self.p[0] - self.xlim[0]) / (self.xlim[1] - self.xlim[0]) - 1.0
-        y_norm = 2.0 * (self.p[1] - self.ylim[0]) / (self.ylim[1] - self.ylim[0]) - 1.0
+        x_norm = (2 * (x - self.xlim[0]) / (self.xlim[1] - self.xlim[0]) - 1)
 
-        dx_goal = (self.alvo[0] - self.p[0]) / (self.xlim[1] - self.xlim[0])
-        dy_goal = (self.alvo[1] - self.p[1]) / (self.ylim[1] - self.ylim[0])
+        y_norm = (2 * (y - self.ylim[0]) / (self.ylim[1] - self.ylim[0]) - 1)
 
-        max_dist = np.linalg.norm([
-            self.xlim[1] - self.xlim[0],
-            self.ylim[1] - self.ylim[0]
-        ])
+        dx_goal = (self.alvo[0] - x) / (self.xlim[1] - self.xlim[0])
 
-        dist_goal = np.linalg.norm(self.alvo - self.p) / max_dist
+        dy_goal = (self.alvo[1] - y) / (self.ylim[1] - self.ylim[0])
 
-        steps_norm = np.clip(self.steps / MAX_STEPS, 0.0, 1.0)
-        info_norm = np.clip(self.info_gain / 10000.0, -1.0, 1.0)
+        max_dist = np.linalg.norm([self.xlim[1] - self.xlim[0], self.ylim[1] - self.ylim[0]])
 
-        obs.extend([
-            x_norm,
-            y_norm,
-            dx_goal,
-            dy_goal,
-            dist_goal,
-            steps_norm,
-            info_norm
-        ])
+        dist_goal = (np.linalg.norm(self.alvo - self.p) / max_dist)
+
+        steps_norm = np.clip(self.steps / MAX_STEPS, 0, 1)
+
+        info_norm = np.clip(self.info_gain / self.known_map.size, 0, 1)
+
+        obs.extend([x_norm, y_norm, np.sin(theta), np.cos(theta), dx_goal, dy_goal, dist_goal, steps_norm, info_norm])
 
         return np.array(obs, dtype=np.float32)
-        
 
     def render(self, Q=None, arrow_size=0.5, target_size=5, robot_size=10):
 
@@ -539,28 +562,31 @@ class Maze(gym.Env):
             px, py = self.world_to_screen(p)
             pygame.draw.rect(self.screen, (155, 0, 200), (px, py, 4, 4))
 
-        # robô no mapa real
-        rx, ry = self.world_to_screen(self.p)
-        pygame.draw.rect(self.screen, (0, 0, 255), (rx, ry, robot_size, robot_size))
+        half_l = self.robot_length / 2
+        half_w = self.robot_width / 2
 
-        if Q is not None:
-            m = self.num_states[0]
-            xm = np.linspace(self.xlim[0], self.xlim[1], m)
-            ym = np.linspace(self.ylim[0], self.ylim[1], m)
+        corners = np.array([
+            [half_l, half_w],
+            [half_l, -half_w]
+            [-half_l, -half_w],
+            [-half_l, half_w]
+        ])
 
-            for x in xm:
-                for y in ym:
-                    if self.collision((x, y)):
-                        continue
+        theta = self.pose[2]
 
-                    S = self.get_state(np.array([x, y]))
-                    u = arrow_size * self.actionU(Q[S, :].argmax())
-                    start = self.world_to_screen([x, y])
-                    end = self.world_to_screen([x + u[0], y + u[1]])
+        rotation = np.array([
+            [np.cos(theta), -np.sin(theta)],
+            [np.sin(theta), np.cos(theta)]
+        ])
 
-                    if np.linalg.norm(u) > 0:
-                        self.draw_arrow(self.screen, (0, 100, 150), start, end)
+        corners_to_world = (corners @ rotation.T + self.p)
+        corners_to_screen = [self.world_to_screen(p) for p in corners_to_world]
 
+        pygame.draw.polygon(self.screen, (0, 0 , 255), corners_to_screen, 3)
+
+        front = np.array([self.p[0] + 0.4 * np.cos(theta), self.p[1] + 0.4 * np.sin(theta)])
+
+        pygame.draw.line(self.screen, (255, 0, 0), self.world_to_screen(self.p), self.world_to_screen(front), 3)
 
         pygame.display.flip()
         self.clock.tick(30)
