@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-import maze_information_map.ackermann_env as cm
+import ackermann_env as cm
 
 
 SEED = 42
@@ -209,12 +209,24 @@ def save_training_plots(rewards, success_rate, losses, output_dir):
         plt.grid(True)
         plt.savefig(os.path.join(output_dir, "dqn_loss.png"), dpi=300, bbox_inches="tight")
 
+def verificar_observacao(obs, nome, obs_dim):
+    if not isinstance(obs, np.ndarray):
+        raise ValueError(
+            f"{nome}: esperado array NumPy, "
+            f"recebido {type(obs).__name__}"
+        )
+
+    if obs.shape != (obs_dim,):
+        raise ValueError(
+            f"{nome}: formato {obs.shape}, "
+            f"esperado {(obs_dim,)}"
+        )
 
 if __name__ == "__main__":
 
     os.makedirs("results", exist_ok=True)
 
-    episodes = 5000
+    episodes = 500
 
     gamma = 0.99
     lr = 1e-3
@@ -234,21 +246,29 @@ if __name__ == "__main__":
     eps_decay = 0.995
 
     # Renderizacao
-    render = True
+    render = False
     render_every = 100
 
-    env = cm.Maze(
+    env = cm.AckermannEnv(
+        img="labirinto6.png",
+        xlim=np.array([0.0, 19.2]),
+        ylim=np.array([0.0, 24.0]),
+        alvo=np.array([15.6, 12.0]),
         render=render,
         continuous_obs=True,
         window_layers=5,
         reset_known_map_each_episode=True,
-        wheelbase = 0.4,
-        robot_length = 0.545,
-        robot_width = 0.415,
-        max_steering_deg = 20,
-        speed = 0.5,
-        dt = 0.2
+        wheelbase=0.4,
+        robot_length=0.545,
+        robot_width=0.415,
+        max_steering_deg=20.0,
+        speed=0.5,
+        dt=0.2,
     )
+
+    initial_pose = np.array([15.6, 8.0, np.pi/2], dtype=np.float32)
+
+    env.seed(SEED)
 
     obs_dim = env.observation_space.shape[0]
     num_actions = env.action_space.n
@@ -279,14 +299,18 @@ if __name__ == "__main__":
 
     for episode in range(1, episodes + 1):
 
-        state = env.reset()
+        state = env.reset(initial_pose=initial_pose)
+        verificar_observacao(state, "reset", obs_dim)
         total_reward = 0.0
 
         while True:
             global_step += 1
 
             action = agent.select_action(state, eps)
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, done, info = env.step(action)
+
+            verificar_observacao(state, "state", obs_dim)
+            verificar_observacao(next_state, "next_state", obs_dim)
 
             agent.buffer.push(state, action, reward, next_state, done)
 
@@ -302,7 +326,7 @@ if __name__ == "__main__":
             total_reward += reward
 
             
-            if episode % render_every == 0:
+            if render and episode % render_every == 0:
                 env.render()
                 env.render_known_map()
 
@@ -339,4 +363,23 @@ if __name__ == "__main__":
     final_success_rate = np.mean(successes[-100:]) * 100.0
     print(f"\nTaxa de sucesso nos ultimos 100 episodios: {final_success_rate:.2f}%")
 
+    print("\nAvaliacao sem exploração:")
+
+    state = env.reset(initial_pose=initial_pose)
+    total_reward = 0.0
+
+    for step in range (1, cm.MAX_STEPS + 1):
+        action = agent.select_action(state, eps=0.0)
+
+        state, reward, done, info = env.step(action)
+        total_reward += reward
+
+        if done:
+            print(
+                f"Passos: {step} | "
+                f"Sucesso: {env.reached_goal()} | "
+                f"Colisão: {info['collision']} | "
+                f"Reward: {total_reward:.2f}"
+            )
+            break
     env.close()

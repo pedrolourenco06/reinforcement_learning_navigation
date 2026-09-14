@@ -195,25 +195,36 @@ class AckermannEnv(gym.Env):
     ########################################
     # reset
     ########################################
-    def reset(self):
+    def reset(self, initial_pose = None):
 
+        if initial_pose is None:
+            pose = self.getRand()
+        else:
+            pose = np.array(initial_pose, dtype=np.float32, copy=True)
+
+            if pose.shape != (3,) or not np.all(np.isfinite(pose)):
+                raise ValueError("initia_pose deve conter [x, y, theta]")
+
+            pose[2] = self.wrap_angle(pose[2])
+
+            if self.collision(pose):
+                raise ValueError("a pose inicial esta em colisão")
+        if np.linalg.norm(pose[:2] - self.alvo) <= 0.3:
+            raise ValueError("a pose inicial esta na regiao do alvo")
         self.steps = 0
-
-        self.pose = self.getRand()
-
+        self.pose = pose.copy()
         self.p = self.pose[:2].copy()
-
         self.traj = [self.p.copy()]
 
         self.last_collision = False
-        self.last_steering_deg = 0
+        self.last_steering_deg = 0.0
 
         if self.reset_known_map_each_episode:
             self.known_map = -np.ones_like(self.mapa, dtype=np.int8)
 
-        self.info_gain = 0
-
         self.update_known_map(layers=2)
+
+        self.info_gain = 0
 
         if self.continuous_obs:
             return self.get_observation()
@@ -282,26 +293,33 @@ class AckermannEnv(gym.Env):
     ########################################
     # função de reforço
     def getReward(self, action):
-        
-        reward = -0.1
-
-        #parcela para descobrimento de novas areas
-        if self.info_gain > 0:
-            reward += 0.002 * self.info_gain
-
         #penalidasde por colidir
         if self.last_collision:
-            reward -= 50
+            return -50.0
 
         #alcançou obj
         if self.reached_goal():
-            reward += 100
+            return 100.0
 
         #timeout
         if self.steps >= MAX_STEPS:
-            reward -= 20
+            return -20.0
 
-        return reward
+        reward = -0.1
+
+        distancia_anterior = np.linalg.norm(self.traj[-2] - self.alvo)
+
+        distancia_atual = np.linalg.norm(self.p - self.alvo)
+
+        progresso = distancia_anterior - distancia_atual
+        reward += 2*progresso
+
+        bonus_exploracao = min (
+            0.002 * max(self.info_gain, 0), 0.05
+        )
+
+        reward += bonus_exploracao
+        return float(reward)
     
     ########################################
     # terminou?
@@ -312,6 +330,7 @@ class AckermannEnv(gym.Env):
             return True
         if self.steps >= MAX_STEPS:
             return True
+        return False
     
     def reached_goal(self):
         return np.linalg.norm(self.p - self.alvo) <= 0.30
@@ -376,7 +395,7 @@ class AckermannEnv(gym.Env):
             return True
         if np.any(wy <= self.ylim[0]):
             return True
-        if np.any(wy >= self.xlim[1]):
+        if np.any(wy >= self.ylim[1]):
             return True
 
         #verifica cada ponto q compoe o robo
