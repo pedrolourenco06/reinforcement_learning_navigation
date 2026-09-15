@@ -608,7 +608,7 @@ class AckermannEnv(gym.Env):
         pygame.draw.line(self.screen, (255, 0, 0), self.world_to_screen(self.p), self.world_to_screen(front), 3)
 
         pygame.display.flip()
-        self.clock.tick(30)
+        self.clock.tick(120)
 
 
     def render_known_map(self):

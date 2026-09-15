@@ -209,24 +209,40 @@ def save_training_plots(rewards, success_rate, losses, output_dir):
         plt.grid(True)
         plt.savefig(os.path.join(output_dir, "dqn_loss.png"), dpi=300, bbox_inches="tight")
 
-def verificar_observacao(obs, nome, obs_dim):
-    if not isinstance(obs, np.ndarray):
-        raise ValueError(
-            f"{nome}: esperado array NumPy, "
-            f"recebido {type(obs).__name__}"
-        )
+# def verificar_observacao(obs, nome, obs_dim):
+#     if not isinstance(obs, np.ndarray):
+#         raise ValueError(
+#             f"{nome}: esperado array NumPy, "
+#             f"recebido {type(obs).__name__}"
+#         )
 
-    if obs.shape != (obs_dim,):
-        raise ValueError(
-            f"{nome}: formato {obs.shape}, "
-            f"esperado {(obs_dim,)}"
-        )
+#     if obs.shape != (obs_dim,):
+#         raise ValueError(
+#             f"{nome}: formato {obs.shape}, "
+#             f"esperado {(obs_dim,)}"
+#         )
+
+def sortear_inicio(env, rng):
+    for _ in range(100):
+        pose = np.array([
+            rng.uniform(15.4, 15.8),
+            rng.uniform(8.0, 10.0),
+            rng.uniform(np.deg2rad(85), np.deg2rad(95)),
+        ], dtype=np.float32)
+
+        if (
+            not env.collision(pose)
+            and np.linalg.norm(pose[:2] - env.alvo) > 0.30
+        ):
+            return pose
+
+    raise RuntimeError("Não foi possível sortear uma pose inicial válida.")
 
 if __name__ == "__main__":
 
     os.makedirs("results", exist_ok=True)
 
-    episodes = 500
+    episodes = 1000
 
     gamma = 0.99
     lr = 1e-3
@@ -243,10 +259,10 @@ if __name__ == "__main__":
     # Epsilon-greedy
     eps_start = 1.0
     eps_end = 0.05
-    eps_decay = 0.995
+    eps_decay = np.sqrt(0.995)
 
     # Renderizacao
-    render = False
+    render = True
     render_every = 100
 
     env = cm.AckermannEnv(
@@ -266,7 +282,6 @@ if __name__ == "__main__":
         dt=0.2,
     )
 
-    initial_pose = np.array([15.6, 8.0, np.pi/2], dtype=np.float32)
 
     env.seed(SEED)
 
@@ -297,10 +312,13 @@ if __name__ == "__main__":
     eps = eps_start
     global_step = 0
 
-    for episode in range(1, episodes + 1):
+    rng_inicio = np.random.default_rng(SEED)
 
+    for episode in range(1, episodes + 1):
+        initial_pose = sortear_inicio(env, rng_inicio)
+       
         state = env.reset(initial_pose=initial_pose)
-        verificar_observacao(state, "reset", obs_dim)
+        # verificar_observacao(state, "reset", obs_dim)
         total_reward = 0.0
 
         while True:
@@ -309,8 +327,8 @@ if __name__ == "__main__":
             action = agent.select_action(state, eps)
             next_state, reward, done, info = env.step(action)
 
-            verificar_observacao(state, "state", obs_dim)
-            verificar_observacao(next_state, "next_state", obs_dim)
+            # verificar_observacao(state, "state", obs_dim)
+            # verificar_observacao(next_state, "next_state", obs_dim)
 
             agent.buffer.push(state, action, reward, next_state, done)
 
@@ -328,7 +346,7 @@ if __name__ == "__main__":
             
             if render and episode % render_every == 0:
                 env.render()
-                env.render_known_map()
+                #env.render_known_map()
 
             if done:
                 break
@@ -363,23 +381,85 @@ if __name__ == "__main__":
     final_success_rate = np.mean(successes[-100:]) * 100.0
     print(f"\nTaxa de sucesso nos ultimos 100 episodios: {final_success_rate:.2f}%")
 
-    print("\nAvaliacao sem exploração:")
+    # print("\nAvaliacao sem exploração:")
 
-    state = env.reset(initial_pose=initial_pose)
-    total_reward = 0.0
+    # state = env.reset(initial_pose=initial_pose)
+    # total_reward = 0.0
 
-    for step in range (1, cm.MAX_STEPS + 1):
-        action = agent.select_action(state, eps=0.0)
+    # for step in range (1, cm.MAX_STEPS + 1):
+    #     action = agent.select_action(state, eps=0.0)
 
-        state, reward, done, info = env.step(action)
-        total_reward += reward
+    #     state, reward, done, info = env.step(action)
+    #     total_reward += reward
 
-        if done:
-            print(
-                f"Passos: {step} | "
-                f"Sucesso: {env.reached_goal()} | "
-                f"Colisão: {info['collision']} | "
-                f"Reward: {total_reward:.2f}"
-            )
-            break
+    #     if done:
+    #         print(
+    #             f"Passos: {step} | "
+    #             f"Sucesso: {env.reached_goal()} | "
+    #             f"Colisão: {info['collision']} | "
+    #             f"Reward: {total_reward:.2f}"
+    #         )
+    #         break
+    # env.close()
+    print("\nAvaliação com posições iniciais variadas:")
+
+    agent.q_net.eval()
+    sucessos_avaliacao = []
+    passos_sucesso = []
+    teste = 0
+
+    for x in [15.4, 15.6, 15.8]:
+        for y in [8.0, 9.0, 10.0]:
+            for angulo in [85, 90, 95]:
+                teste += 1
+
+                inicio = np.array(
+                    [x, y, np.deg2rad(angulo)],
+                    dtype=np.float32
+                )
+
+                state = env.reset(initial_pose=inicio)
+                total_reward = 0.0
+                menor_distancia = np.linalg.norm(env.p - env.alvo)
+                for passo in range(1, cm.MAX_STEPS + 1):
+                    action = agent.select_action(state, eps=0.0)
+                    state, reward, done, info = env.step(action)
+                    distancia = np.linalg.norm(env.p - env.alvo)
+                    menor_distancia = min(menor_distancia, distancia)
+                    total_reward += reward
+
+                    if done:
+                        break
+
+                sucesso = env.reached_goal()
+                sucessos_avaliacao.append(int(sucesso))
+
+                if sucesso:
+                    passos_sucesso.append(passo)
+
+                print(
+                    f"Teste {teste:02d}/27 | "
+                    f"Início: ({x:.1f}, {y:.1f}, {angulo}°) | "
+                    f"Passos: {passo} | "
+                    f"Sucesso: {sucesso} | "
+                    f"Colisão: {info['collision']} | "
+                    f"Reward: {total_reward:.2f} | "
+                    f"Menor distância: {menor_distancia:.3f} m | "
+                    f"Posição final: ({env.p[0]:.2f}, {env.p[1]:.2f}) | "
+                )
+
+    print(
+        f"\nSucesso na avaliação: "
+        f"{sum(sucessos_avaliacao)}/27 "
+        f"({100 * np.mean(sucessos_avaliacao):.2f}%)"
+    )
+
+    if passos_sucesso:
+        print(
+            f"Média de passos nos sucessos: "
+            f"{np.mean(passos_sucesso):.1f}"
+        )
+
     env.close()
+
+    
