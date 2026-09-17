@@ -12,6 +12,12 @@ import torch.optim as optim
 
 import ackermann_env as cm
 
+from sorteio_inicios import (
+    avaliar_regioes,
+    validar_configuracao,
+    sortear_inicio,
+)
+
 
 SEED = 42
 random.seed(SEED)
@@ -222,21 +228,72 @@ def save_training_plots(rewards, success_rate, losses, output_dir):
 #             f"esperado {(obs_dim,)}"
 #         )
 
-def sortear_inicio(env, rng):
-    for _ in range(100):
-        pose = np.array([
-            rng.uniform(15.4, 15.8),
-            rng.uniform(8.0, 10.0),
-            rng.uniform(np.deg2rad(85), np.deg2rad(95)),
-        ], dtype=np.float32)
+# def sortear_inicio(env, rng):
+#     for _ in range(100):
+#         pose = np.array([
+#             rng.uniform(15.4, 15.8),
+#             rng.uniform(8.0, 10.0),
+#             rng.uniform(np.deg2rad(85), np.deg2rad(95)),
+#         ], dtype=np.float32)
 
-        if (
-            not env.collision(pose)
-            and np.linalg.norm(pose[:2] - env.alvo) > 0.30
-        ):
-            return pose
+#         if (
+#             not env.collision(pose)
+#             and np.linalg.norm(pose[:2] - env.alvo) > 0.30
+#         ):
+#             return pose
 
-    raise RuntimeError("Não foi possível sortear uma pose inicial válida.")
+#     raise RuntimeError("Não foi possível sortear uma pose inicial válida.")
+
+def avaliar_27_poses(env, agent):
+    sucessos = 0
+    passos_sucessos = []
+
+    estava_treinando = agent.q_net.training
+    agent.q_net.eval()
+
+    try:
+        for x in [15.4, 15.6, 15.8]:
+            for y in [8.0, 9.0, 10.0]:
+                for angulo in [85, 90, 95]:
+                    inicio = np.array(
+                        [x, y, np.deg2rad(angulo)],
+                        dtype=np.float32,
+                    )
+
+                    state = env.reset(initial_pose=inicio)
+
+                    for passo in range(1, cm.MAX_STEPS + 1):
+                        # Sem exploração e sem consumir números aleatórios.
+                        with torch.no_grad():
+                            entrada = torch.as_tensor(
+                                state,
+                                dtype=torch.float32,
+                                device=agent.device,
+                            ).unsqueeze(0)
+
+                            action = int(
+                                agent.q_net(entrada).argmax(dim=1).item()
+                            )
+
+                        state, _, done, _ = env.step(action)
+
+                        if done:
+                            break
+
+                    if env.reached_goal():
+                        sucessos += 1
+                        passos_sucessos.append(passo)
+
+    finally:
+        agent.q_net.train(estava_treinando)
+
+    media_passos = (
+        float(np.mean(passos_sucessos))
+        if passos_sucessos
+        else float("inf")
+    )
+
+    return sucessos, media_passos
 
 if __name__ == "__main__":
 
@@ -245,7 +302,7 @@ if __name__ == "__main__":
     episodes = 1000
 
     gamma = 0.99
-    lr = 1e-3
+    lr = 1e-4
 
     batch_size = 64
     buffer_size = 100000
@@ -263,13 +320,13 @@ if __name__ == "__main__":
 
     # Renderizacao
     render = True
-    render_every = 100
+    render_every = 25
 
     env = cm.AckermannEnv(
         img="labirinto6.png",
         xlim=np.array([0.0, 19.2]),
         ylim=np.array([0.0, 24.0]),
-        alvo=np.array([15.6, 12.0]),
+        alvo=np.array([13.2, 12.2]),
         render=render,
         continuous_obs=True,
         window_layers=5,
@@ -284,6 +341,9 @@ if __name__ == "__main__":
 
 
     env.seed(SEED)
+
+    validar_configuracao(env)
+    rng_inicio = np.random.default_rng(SEED)
 
     obs_dim = env.observation_space.shape[0]
     num_actions = env.action_space.n
@@ -312,11 +372,14 @@ if __name__ == "__main__":
     eps = eps_start
     global_step = 0
 
-    rng_inicio = np.random.default_rng(SEED)
+    
+    melhor_sucesso_validacao = -1
+    melhor_media_passos = float("inf")
+    melhor_episodio = 0
 
     for episode in range(1, episodes + 1):
-        initial_pose = sortear_inicio(env, rng_inicio)
-       
+
+        initial_pose, regiao = sortear_inicio(env, rng_inicio)
         state = env.reset(initial_pose=initial_pose)
         # verificar_observacao(state, "reset", obs_dim)
         total_reward = 0.0
@@ -368,12 +431,44 @@ if __name__ == "__main__":
             f"Avg50: {avg_reward_50:8.2f} | "
             f"Sucesso50: {success_rate[-1]:.2f} | "
             f"Eps: {eps:.3f} | "
-            f"Buffer: {len(agent.buffer)}"
+            f"Buffer: {len(agent.buffer)} | "
+            f"Região: {regiao} | "
         )
-
         if episode % 100 == 0:
             env.save_known_map_image(f"results/known_map_ep_{episode}.png")
+            
+            sucessos_validacao, media_passos = avaliar_regioes(
+                env, agent, max_steps=cm.MAX_STEPS
+            )
 
+            print(
+                f"Validação sem exploração | "
+                f"Episódio: {episode} | "
+                f"Sucesso: {sucessos_validacao}/27 | "
+                f"Média de passos nos sucessos: {media_passos:.1f}"
+            )
+
+            melhorou = (
+                sucessos_validacao > melhor_sucesso_validacao
+                or (
+                    sucessos_validacao == melhor_sucesso_validacao
+                    and media_passos < melhor_media_passos
+                )
+            )
+
+            if melhorou:
+                melhor_sucesso_validacao = sucessos_validacao
+                melhor_media_passos = media_passos
+                melhor_episodio = episode
+
+                agent.save("results/dqn_best.pt")
+
+                print(
+                    f"Melhor modelo salvo | "
+                    f"Episódio: {melhor_episodio} | "
+                    f"Sucesso: {melhor_sucesso_validacao}/27"
+                )
+            
 
     agent.save("results/dqn_model.pt")
     save_training_plots(rewards_history, success_rate, loss_history, "results")
@@ -408,58 +503,70 @@ if __name__ == "__main__":
     passos_sucesso = []
     teste = 0
 
-    for x in [15.4, 15.6, 15.8]:
-        for y in [8.0, 9.0, 10.0]:
-            for angulo in [85, 90, 95]:
-                teste += 1
+    # for x in [3.6]:
+    #     for y in [20.4]:
+    #         for angulo in [-90]:
+    #             teste += 1
 
-                inicio = np.array(
-                    [x, y, np.deg2rad(angulo)],
-                    dtype=np.float32
-                )
+    #             inicio = np.array(
+    #                 [x, y, np.deg2rad(angulo)],
+    #                 dtype=np.float32
+    #             )
 
-                state = env.reset(initial_pose=inicio)
-                total_reward = 0.0
-                menor_distancia = np.linalg.norm(env.p - env.alvo)
-                for passo in range(1, cm.MAX_STEPS + 1):
-                    action = agent.select_action(state, eps=0.0)
-                    state, reward, done, info = env.step(action)
-                    distancia = np.linalg.norm(env.p - env.alvo)
-                    menor_distancia = min(menor_distancia, distancia)
-                    total_reward += reward
+    #             state = env.reset(initial_pose=inicio)
+    #             total_reward = 0.0
+    #             menor_distancia = np.linalg.norm(env.p - env.alvo)
+    #             for passo in range(1, cm.MAX_STEPS + 1):
+    #                 action = agent.select_action(state, eps=0.0)
+    #                 state, reward, done, info = env.step(action)
+    #                 distancia = np.linalg.norm(env.p - env.alvo)
+    #                 menor_distancia = min(menor_distancia, distancia)
+    #                 total_reward += reward
 
-                    if done:
-                        break
+    #                 if done:
+    #                     break
 
-                sucesso = env.reached_goal()
-                sucessos_avaliacao.append(int(sucesso))
+    #             sucesso = env.reached_goal()
+    #             sucessos_avaliacao.append(int(sucesso))
 
-                if sucesso:
-                    passos_sucesso.append(passo)
+    #             if sucesso:
+    #                 passos_sucesso.append(passo)
 
-                print(
-                    f"Teste {teste:02d}/27 | "
-                    f"Início: ({x:.1f}, {y:.1f}, {angulo}°) | "
-                    f"Passos: {passo} | "
-                    f"Sucesso: {sucesso} | "
-                    f"Colisão: {info['collision']} | "
-                    f"Reward: {total_reward:.2f} | "
-                    f"Menor distância: {menor_distancia:.3f} m | "
-                    f"Posição final: ({env.p[0]:.2f}, {env.p[1]:.2f}) | "
-                )
+    #             print(
+    #                 f"Teste {teste:02d}/27 | "
+    #                 f"Início: ({x:.1f}, {y:.1f}, {angulo}°) | "
+    #                 f"Passos: {passo} | "
+    #                 f"Sucesso: {sucesso} | "
+    #                 f"Colisão: {info['collision']} | "
+    #                 f"Reward: {total_reward:.2f} | "
+    #                 f"Menor distância: {menor_distancia:.3f} m | "
+    #                 f"Posição final: ({env.p[0]:.2f}, {env.p[1]:.2f}) | "
+    #             )
 
-    print(
-        f"\nSucesso na avaliação: "
-        f"{sum(sucessos_avaliacao)}/27 "
-        f"({100 * np.mean(sucessos_avaliacao):.2f}%)"
+    # print(
+    #     f"\nSucesso na avaliação: "
+    #     f"{sum(sucessos_avaliacao)}/27 "
+    #     f"({100 * np.mean(sucessos_avaliacao):.2f}%)"
+    # )
+
+    # if passos_sucesso:
+    #     print(
+    #         f"Média de passos nos sucessos: "
+    #         f"{np.mean(passos_sucesso):.1f}"
+    #     )
+    print("\nAvaliação final por região:")
+
+    sucessos, media_passos = avaliar_regioes(
+        env, agent, max_steps=cm.MAX_STEPS
     )
 
-    if passos_sucesso:
-        print(
-            f"Média de passos nos sucessos: "
-            f"{np.mean(passos_sucesso):.1f}"
-        )
+    print(
+        f"Sucesso total: {sucessos}/81 "
+        f"({100 * sucessos / 81:.2f}%) | "
+        f"Média de passos nos sucessos: {media_passos:.1f}"
+    )
 
     env.close()
+    
 
     

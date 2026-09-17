@@ -11,7 +11,7 @@ from labirinto_dqn import QNetwork
 PASTA = Path(__file__).resolve().parent
 
 # Aponte para o modelo do treinamento com inícios aleatórios.
-MODELO = PASTA / "results_inicio_aleatorio_limitado" / "dqn_model.pt"
+MODELO = PASTA / "results" / "dqn_best.pt"
 
 # True para visualizar os percursos.
 RENDER = True
@@ -47,7 +47,7 @@ if __name__ == "__main__":
         img=str(PASTA / "labirinto6.png"),
         xlim=np.array([0.0, 19.2]),
         ylim=np.array([0.0, 24.0]),
-        alvo=np.array([15.6, 12.0]),
+        alvo=np.array([13.2, 12.2]),
         render=RENDER,
         continuous_obs=True,
         window_layers=5,
@@ -61,14 +61,7 @@ if __name__ == "__main__":
     )
     rng_avaliacao = np.random.default_rng(2026)
 
-    poses = [
-        (
-        rng_avaliacao.uniform(15.4, 15.8),
-        rng_avaliacao.uniform(8.0, 10.0),
-        rng_avaliacao.uniform(85.0, 95.0),
-        )
-        for _ in range(100)
-]
+    poses = [(3.6, 20.4, -90)]
 
     sucessos = 0
 

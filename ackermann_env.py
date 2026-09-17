@@ -156,7 +156,8 @@ class AckermannEnv(gym.Env):
         I_binary = np.where(I_gray > 127, 255, 0).astype(np.uint8)
 
         # Inverte a imagem no eixo Y
-        self.mapa = np.flipud(I_binary)
+        #self.mapa = np.flipud(I_binary)
+        self.mapa = I_binary.copy()
 
         # Parâmetros de conversão (como no original)
         self.mx = float(self.ncol) / float(self.xlim[1] - self.xlim[0])
@@ -293,18 +294,6 @@ class AckermannEnv(gym.Env):
     ########################################
     # função de reforço
     def getReward(self, action):
-        #penalidasde por colidir
-        if self.last_collision:
-            return -50.0
-
-        #alcançou obj
-        if self.reached_goal():
-            return 100.0
-
-        #timeout
-        if self.steps >= MAX_STEPS:
-            return -20.0
-
         reward = -0.1
 
         distancia_anterior = np.linalg.norm(self.traj[-2] - self.alvo)
@@ -319,6 +308,13 @@ class AckermannEnv(gym.Env):
         )
 
         reward += bonus_exploracao
+
+        if self.last_collision:
+            reward -= 50.0
+        elif self.reached_goal():
+            reward += 100.0
+        elif self.steps >= MAX_STEPS:
+            reward -= 20.0
         return float(reward)
     
     ########################################
