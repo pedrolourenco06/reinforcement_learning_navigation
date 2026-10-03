@@ -320,7 +320,7 @@ if __name__ == "__main__":
 
     # Renderizacao
     render = True
-    render_every = 25
+    render_every = 100
 
     env = cm.AckermannEnv(
         img="labirinto6.png",

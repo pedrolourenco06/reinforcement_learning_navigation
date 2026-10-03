@@ -30,7 +30,7 @@ class AckermannEnv(gym.Env):
             xlim=np.array([0.0,19.2]),
             ylim=np.array([0.0,24.0]),
             res=0.4,
-            img='labirinto2.png',
+            img='labirinto6.png',
             alvo=np.array([5.0, 1.8]),
             render=False,
             continuous_obs=False,
@@ -88,7 +88,7 @@ class AckermannEnv(gym.Env):
         # espaco de observacao para DQN
         # janela local + 9 variaveis continuas:
         # x_norm, y_norm, dx_goal, dy_goal, dist_goal, steps_norm, info_norm
-        obs_dim = (2 * self.window_layers + 1) ** 2 + 9
+        obs_dim = 2* (2 * self.window_layers + 1) ** 2 + 9
 
         self.observation_space = spaces.Box(
             low=-1.0,
@@ -223,7 +223,7 @@ class AckermannEnv(gym.Env):
         if self.reset_known_map_each_episode:
             self.known_map = -np.ones_like(self.mapa, dtype=np.int8)
 
-        self.update_known_map(layers=2)
+        self.update_known_map(layers=6)
 
         self.info_gain = 0
 
@@ -274,7 +274,7 @@ class AckermannEnv(gym.Env):
 
         self.traj.append(self.p.copy())
 
-        self.update_known_map(layers=2)
+        self.update_known_map(layers=6)
 
         reward = self.getReward(action)
 
@@ -304,7 +304,7 @@ class AckermannEnv(gym.Env):
         reward += 2*progresso
 
         bonus_exploracao = min (
-            0.002 * max(self.info_gain, 0), 0.05
+            0.002 * max(self.info_gain, 0), 0.2
         )
 
         reward += bonus_exploracao
@@ -516,38 +516,91 @@ class AckermannEnv(gym.Env):
 
         return -1.0
     
+    # def get_observation(self):
+
+    #     obs = []
+
+    #     x = self.pose[0]
+    #     y = self.pose[1]
+    #     theta = self.pose[2]
+
+    #     for dy in range(self.window_layers, -self.window_layers - 1, -1):
+    #         for dx in range(-self.window_layers, self.window_layers + 1):
+    #             q = np.array([x + dx * self.res, y + dy * self.res])
+    #             obs.append(self.get_known_value_at_world(q))
+
+    #     x_norm = (2 * (x - self.xlim[0]) / (self.xlim[1] - self.xlim[0]) - 1)
+
+    #     y_norm = (2 * (y - self.ylim[0]) / (self.ylim[1] - self.ylim[0]) - 1)
+
+    #     dx_goal = (self.alvo[0] - x) / (self.xlim[1] - self.xlim[0])
+
+    #     dy_goal = (self.alvo[1] - y) / (self.ylim[1] - self.ylim[0])
+
+    #     max_dist = np.linalg.norm([self.xlim[1] - self.xlim[0], self.ylim[1] - self.ylim[0]])
+
+    #     dist_goal = (np.linalg.norm(self.alvo - self.p) / max_dist)
+
+    #     steps_norm = np.clip(self.steps / MAX_STEPS, 0, 1)
+
+    #     info_norm = np.clip(self.info_gain / self.known_map.size, 0, 1)
+
+    #     obs.extend([x_norm, y_norm, np.sin(theta), np.cos(theta), dx_goal, dy_goal, dist_goal, steps_norm, info_norm])
+
+    #     return np.array(obs, dtype=np.float32)
     def get_observation(self):
+        ocupacao = []
+        conhecido = []
 
-        obs = []
-
-        x = self.pose[0]
-        y = self.pose[1]
-        theta = self.pose[2]
+        x, y, theta = self.pose
 
         for dy in range(self.window_layers, -self.window_layers - 1, -1):
             for dx in range(-self.window_layers, self.window_layers + 1):
-                q = np.array([x + dx * self.res, y + dy * self.res])
-                obs.append(self.get_known_value_at_world(q))
+                q = np.array([
+                    x + dx * self.res,
+                    y + dy * self.res,
+                ])
 
-        x_norm = (2 * (x - self.xlim[0]) / (self.xlim[1] - self.xlim[0]) - 1)
+                valor = self.get_known_value_at_world(q)
 
-        y_norm = (2 * (y - self.ylim[0]) / (self.ylim[1] - self.ylim[0]) - 1)
+                ocupacao.append(1.0 if valor == 1.0 else 0.0)
+                conhecido.append(0.0 if valor == -1.0 else 1.0)
 
-        dx_goal = (self.alvo[0] - x) / (self.xlim[1] - self.xlim[0])
+        largura = self.xlim[1] - self.xlim[0]
+        altura = self.ylim[1] - self.ylim[0]
 
-        dy_goal = (self.alvo[1] - y) / (self.ylim[1] - self.ylim[0])
+        x_norm = 2.0 * (x - self.xlim[0]) / largura - 1.0
+        y_norm = 2.0 * (y - self.ylim[0]) / altura - 1.0
 
-        max_dist = np.linalg.norm([self.xlim[1] - self.xlim[0], self.ylim[1] - self.ylim[0]])
+        dx_goal = (self.alvo[0] - x) / largura
+        dy_goal = (self.alvo[1] - y) / altura
 
-        dist_goal = (np.linalg.norm(self.alvo - self.p) / max_dist)
+        max_dist = np.hypot(largura, altura)
+        dist_goal = np.linalg.norm(self.alvo - self.p) / max_dist
 
-        steps_norm = np.clip(self.steps / MAX_STEPS, 0, 1)
+        steps_norm = np.clip(self.steps / MAX_STEPS, 0.0, 1.0)
+        info_norm = np.clip(
+            self.info_gain / self.known_map.size,
+            0.0,
+            1.0,
+        )
 
-        info_norm = np.clip(self.info_gain / self.known_map.size, 0, 1)
+        variaveis = [
+            x_norm,
+            y_norm,
+            np.sin(theta),
+            np.cos(theta),
+            dx_goal,
+            dy_goal,
+            dist_goal,
+            steps_norm,
+            info_norm,
+        ]
 
-        obs.extend([x_norm, y_norm, np.sin(theta), np.cos(theta), dx_goal, dy_goal, dist_goal, steps_norm, info_norm])
-
-        return np.array(obs, dtype=np.float32)
+        return np.asarray(
+            ocupacao + conhecido + variaveis,
+            dtype=np.float32,
+        )
 
     def render(self, Q=None, arrow_size=0.5, target_size=5, robot_size=10):
 
