@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 results/
 qlearning_qtable.npy
+# Checkpoints completos com buffer de experiências
+**/dqn_checkpoint.pt
+**/dqn_checkpoint.pt.tmp
