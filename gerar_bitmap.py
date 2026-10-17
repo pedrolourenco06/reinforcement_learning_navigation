@@ -19,13 +19,13 @@ CELL = int(round(LARGURA_CORREDOR_M * PX_POR_METRO))   # 240 px
 
 grid = np.array([
     [0,0,0,0,0,0,0,0],
-    [0,1,0,0,1,1,1,0],
-    [0,1,1,1,1,0,1,0],
-    [0,0,1,0,1,1,1,0],
     [0,1,1,1,1,1,1,0],
-    [0,0,1,1,1,1,1,0],
-    [0,1,1,0,0,0,1,0],
-    [0,1,0,0,1,0,1,0],
+    [0,1,1,1,1,1,1,0],
+    [0,1,0,1,1,1,1,0],
+    [0,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,0],
+    [0,1,1,1,1,0,1,0],
+    [0,1,1,1,1,1,1,0],
     [0,1,1,1,1,1,1,0],
     [0,0,0,0,0,0,0,0],
 ], dtype=np.uint8)
@@ -38,7 +38,7 @@ h, w = grid.shape
 img_array = np.kron(grid, np.ones((CELL, CELL), dtype=np.uint8)) * 255
 
 img = Image.fromarray(img_array, mode="L")
-img.save("labirinto6.png")
+img.save("mapa_simples.png")
 
 # =========================================================
 # INFORMACOES
@@ -48,7 +48,7 @@ altura_px, largura_px = img_array.shape
 altura_m = altura_px / PX_POR_METRO
 largura_m = largura_px / PX_POR_METRO
 
-print("Arquivo gerado: labirinto3.png")
+print("Arquivo gerado: mapa_simples.png")
 print(f"Resolucao: {largura_px} x {altura_px} px")
 print(f"Tamanho fisico: {largura_m:.2f} m x {altura_m:.2f} m")
 print(f"Largura do corredor: {CELL} px = {LARGURA_CORREDOR_M:.2f} m")

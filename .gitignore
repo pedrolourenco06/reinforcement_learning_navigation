@@ -6,3 +6,9 @@ qlearning_qtable.npy
 # Checkpoints completos com buffer de experiências
 **/dqn_checkpoint.pt
 **/dqn_checkpoint.pt.tmp
+results_curva
+results_curva_reta
+results_reta
+ré/results_re_mapa_simples
+ré/results_re_mapa_simples2
+ré/results_re_penalidade
