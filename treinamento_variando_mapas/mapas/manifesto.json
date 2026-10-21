@@ -1,0 +1,122 @@
+[
+  {
+    "arquivo": "treino/aberto.png",
+    "px_por_metro": 100,
+    "dificuldade": 0,
+    "split": "treino"
+  },
+  {
+    "arquivo": "treino/dois_obstaculos.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "treino"
+  },
+  {
+    "arquivo": "treino/circuito_referencia.png",
+    "px_por_metro": 100,
+    "dificuldade": 2,
+    "split": "treino"
+  },
+  {
+    "arquivo": "treino/rua_sem_saida.png",
+    "px_por_metro": 100,
+    "dificuldade": 2,
+    "split": "treino"
+  },
+  {
+    "arquivo": "treino/obstaculos_10.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "treino"
+  },
+  {
+    "arquivo": "treino/obstaculos_11.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "treino"
+  },
+  {
+    "arquivo": "treino/obstaculos_12.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "treino"
+  },
+  {
+    "arquivo": "treino/obstaculos_13.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "treino"
+  },
+  {
+    "arquivo": "treino/obstaculos_14.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "treino"
+  },
+  {
+    "arquivo": "treino/obstaculos_15.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "treino"
+  },
+  {
+    "arquivo": "treino/obstaculos_16.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "treino"
+  },
+  {
+    "arquivo": "treino/obstaculos_17.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "treino"
+  },
+  {
+    "arquivo": "validacao/obstaculos_110.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "validacao"
+  },
+  {
+    "arquivo": "validacao/obstaculos_111.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "validacao"
+  },
+  {
+    "arquivo": "validacao/obstaculos_112.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "validacao"
+  },
+  {
+    "arquivo": "teste/obstaculos_210.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "teste"
+  },
+  {
+    "arquivo": "teste/obstaculos_211.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "teste"
+  },
+  {
+    "arquivo": "teste/obstaculos_212.png",
+    "px_por_metro": 100,
+    "dificuldade": 1,
+    "split": "teste"
+  },
+  {
+    "arquivo": "validacao/circuito_validacao.png",
+    "px_por_metro": 100,
+    "dificuldade": 2,
+    "split": "validacao"
+  },
+  {
+    "arquivo": "teste/circuito_teste.png",
+    "px_por_metro": 100,
+    "dificuldade": 2,
+    "split": "teste"
+  }
+]

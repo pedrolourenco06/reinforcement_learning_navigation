@@ -7,8 +7,9 @@ import numpy as np
 
 PX_POR_METRO = 100
 LARGURA_CORREDOR_M = 2.40
-CELL = int(round(LARGURA_CORREDOR_M * PX_POR_METRO))   # 240 px
-
+#CELL = int(round(LARGURA_CORREDOR_M * PX_POR_METRO))   # 240 px
+TAMANHO_CELULA_M = 1.20
+CELL = int(round(TAMANHO_CELULA_M * PX_POR_METRO))
 # grade do mapa
 # 1 = corredor (branco)
 # 0 = parede (preto)
@@ -18,16 +19,22 @@ CELL = int(round(LARGURA_CORREDOR_M * PX_POR_METRO))   # 240 px
 # com poucas bifurcações, mais limpo e mais controlado.
 
 grid = np.array([
-    [0,0,0,0,0,0,0,0],
-    [0,1,1,1,1,1,1,0],
-    [0,1,1,1,1,1,1,0],
-    [0,1,0,1,1,1,1,0],
-    [0,1,1,1,1,1,1,0],
-    [0,1,1,1,1,1,1,0],
-    [0,1,1,1,1,0,1,0],
-    [0,1,1,1,1,1,1,0],
-    [0,1,1,1,1,1,1,0],
-    [0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,1,1,0,0,0,0,0,0,1,1,0,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,1,1,0,0,0,0,0,0,1,1,0,0],
+    [0,0,1,1,0,0,0,0,0,0,1,1,0,0],
+    [0,0,1,1,0,0,0,0,0,0,1,1,0,0],
+    [0,0,1,1,0,0,0,0,0,0,1,1,0,0],
+    [0,0,1,1,0,0,0,0,0,0,1,1,0,0],
+    [0,0,1,1,0,0,0,0,0,0,1,1,0,0],
+    [0,0,1,1,0,0,0,0,0,0,1,1,0,0],
+    [0,0,1,1,0,0,0,0,0,0,1,1,0,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,1,1,0,0,0,0,0,0,1,1,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0],
 ], dtype=np.uint8)
 
 # =========================================================
@@ -38,7 +45,7 @@ h, w = grid.shape
 img_array = np.kron(grid, np.ones((CELL, CELL), dtype=np.uint8)) * 255
 
 img = Image.fromarray(img_array, mode="L")
-img.save("mapa_simples.png")
+img.save("mapa_corredor.png")
 
 # =========================================================
 # INFORMACOES
@@ -48,7 +55,7 @@ altura_px, largura_px = img_array.shape
 altura_m = altura_px / PX_POR_METRO
 largura_m = largura_px / PX_POR_METRO
 
-print("Arquivo gerado: mapa_simples.png")
+print("Arquivo gerado: mapa_corredor.png")
 print(f"Resolucao: {largura_px} x {altura_px} px")
 print(f"Tamanho fisico: {largura_m:.2f} m x {altura_m:.2f} m")
 print(f"Largura do corredor: {CELL} px = {LARGURA_CORREDOR_M:.2f} m")
